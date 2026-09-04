@@ -470,26 +470,46 @@ function renderSharedExtra() {
     state.sharedMode = 'payback';
     const select = document.createElement('select');
     select.id = 'ledgerSelect';
-    const ph = document.createElement('option');
-    ph.textContent = state.openLedger.length ? 'Which expense is this paying back?' : 'Loading…';
-    ph.value = '';
-    select.appendChild(ph);
-    state.openLedger.forEach((entry) => {
-      const o = document.createElement('option');
-      o.value = entry.id;
-      const remaining = Number(entry.amountPaid) - Number(entry.reimbursedSoFar);
-      o.textContent = entry.id + ' — ' + entry.description + ' (paid $' + entry.amountPaid + (remaining > 0 ? ', ~$' + remaining.toFixed(2) + ' still open' : '') + ')';
-      select.appendChild(o);
-    });
     box.appendChild(select);
+    populateLedgerSelect();
     loadOpenLedger();
+  }
+}
+
+// Fills (or refreshes) the ledger dropdown's <option>s in place, without
+// recreating the <select> element — so a selection the user already made
+// survives a background refresh instead of getting reset to the placeholder.
+function populateLedgerSelect() {
+  const select = document.getElementById('ledgerSelect');
+  if (!select) return;
+  const previousValue = select.value;
+  select.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.textContent = state.openLedger.length ? 'Which expense is this paying back?' : 'Loading…';
+  ph.value = '';
+  select.appendChild(ph);
+  state.openLedger.forEach((entry) => {
+    const o = document.createElement('option');
+    o.value = entry.id;
+    const remaining = Number(entry.amountPaid) - Number(entry.reimbursedSoFar);
+    o.textContent = entry.id + ' — ' + entry.description + ' (paid $' + entry.amountPaid + (remaining > 0 ? ', ~$' + remaining.toFixed(2) + ' still open' : '') + ')';
+    select.appendChild(o);
+  });
+  if (previousValue && state.openLedger.some((e) => e.id === previousValue)) {
+    select.value = previousValue;
   }
 }
 
 async function loadOpenLedger() {
   const res = await callApi('getOpenLedgerEntries', {});
   state.openLedger = res.entries || [];
-  if ($('sharedToggle').checked && !state.isExpense) renderSharedExtra();
+  // Refresh the dropdown's options in place. Calling renderSharedExtra()
+  // here (as this used to) would recreate the <select> AND call
+  // loadOpenLedger() again inside it — an infinite loop that hammered the
+  // backend and kept resetting the dropdown to the placeholder text right
+  // after you picked something, which is exactly the "glitches back to the
+  // question" bug.
+  if ($('sharedToggle').checked && !state.isExpense) populateLedgerSelect();
 }
 
 function openModal(id) { $(id).classList.add('show'); }
