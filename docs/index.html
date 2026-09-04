@@ -310,6 +310,24 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="newAccModal">
+  <div class="modal">
+    <h3>New account</h3>
+    <input id="newAccName" type="text" placeholder="e.g. Venmo" />
+    <div class="toggle-row" style="padding:4px 0 10px;">
+      <div class="label" style="font-size:13.5px;">Also add to template</div>
+      <label class="switch">
+        <input type="checkbox" id="newAccTemplate" />
+        <span class="track"></span>
+      </label>
+    </div>
+    <div class="actions">
+      <button class="cancel" data-close>Cancel</button>
+      <button class="confirm" id="newAccConfirm">Add</button>
+    </div>
+  </div>
+</div>
+
 <script src="config.js"></script>
 <script>
 // APP_SCRIPT_URL and APP_SECRET live in config.js. Since GitHub Pages can only
@@ -328,6 +346,13 @@ const state = {
   sharedMode: null, // null | 'open' | 'payback'
   openLedger: [],
   duplicateOverride: false,
+  // A category/account picked via "+ Add new..." isn't written to the
+  // spreadsheet right away (that used to happen the instant you clicked
+  // "Add", which was slow and landed in the wrong place). It's only staged
+  // here and gets created for real at Save time, in the same destination
+  // the entry is going to.
+  pendingCategory: null, // null | {name, alsoTemplate}
+  pendingAccount: null, // null | {name, alsoTemplate}
 };
 
 const $ = (id) => document.getElementById(id);
@@ -491,26 +516,40 @@ $('newDestConfirm').onclick = async () => {
   $('newDestConfirm').disabled = false;
 };
 
-$('newCatConfirm').onclick = async () => {
+$('newCatConfirm').onclick = () => {
   const name = $('newCatName').value.trim();
   if (!name) return;
-  const primary = state.destinations.find((d) => d.selected);
-  if (!primary) { toast('Pick a destination first'); return; }
-  $('newCatConfirm').disabled = true;
-  try {
-    await callApi('addCategory', { destinationId: primary.id, categoryName: name, alsoTemplate: $('newCatTemplate').checked });
-    state.categories.push(name);
-    renderSelect('category', state.categories, 'Select category');
-    $('category').value = name;
-    closeModal('newCatModal');
-    $('newCatName').value = '';
-    toast('Added category "' + name + '"');
-  } catch (e) { toast('Error: ' + e.message); }
-  $('newCatConfirm').disabled = false;
+  if (!state.destinations.some((d) => d.selected)) { toast('Pick a destination first'); return; }
+  // Stage it locally — it's only written to the spreadsheet when you save
+  // the entry, so this is instant and never leaves a half-added category
+  // behind if you back out.
+  if (!state.categories.includes(name)) state.categories.push(name);
+  renderSelect('category', state.categories, 'Select category');
+  $('category').value = name;
+  state.pendingCategory = { name, alsoTemplate: $('newCatTemplate').checked };
+  closeModal('newCatModal');
+  $('newCatName').value = '';
+  $('newCatTemplate').checked = false;
+};
+
+$('newAccConfirm').onclick = () => {
+  const name = $('newAccName').value.trim();
+  if (!name) return;
+  if (!state.destinations.some((d) => d.selected)) { toast('Pick a destination first'); return; }
+  if (!state.accounts.includes(name)) state.accounts.push(name);
+  renderSelect('account', state.accounts, 'Select account');
+  $('account').value = name;
+  state.pendingAccount = { name, alsoTemplate: $('newAccTemplate').checked };
+  closeModal('newAccModal');
+  $('newAccName').value = '';
+  $('newAccTemplate').checked = false;
 };
 
 $('category').addEventListener('change', (e) => {
   if (e.target.value === '__add__') { e.target.value = ''; openModal('newCatModal'); }
+});
+$('account').addEventListener('change', (e) => {
+  if (e.target.value === '__add__') { e.target.value = ''; openModal('newAccModal'); }
 });
 
 $('typeExpense').onclick = () => setType(true);
@@ -540,6 +579,20 @@ $('save').addEventListener('click', async () => {
   $('save').innerHTML = '<span class="spinner"></span>Saving…';
 
   try {
+    // Actually create a staged new category/account now, into the
+    // destination the entry is going to — but only if it's still the one
+    // selected (if you added one and then picked something else instead,
+    // just drop it rather than creating something you're not using).
+    const primary = state.destinations.find((d) => d.selected);
+    if (state.pendingCategory && category === state.pendingCategory.name && primary) {
+      await callApi('addCategory', { destinationId: primary.id, categoryName: state.pendingCategory.name, alsoTemplate: state.pendingCategory.alsoTemplate });
+      state.pendingCategory = null;
+    }
+    if (state.pendingAccount && account === state.pendingAccount.name && primary) {
+      await callApi('addAccount', { destinationId: primary.id, accountName: state.pendingAccount.name, alsoTemplate: state.pendingAccount.alsoTemplate });
+      state.pendingAccount = null;
+    }
+
     if (!state.duplicateOverride) {
       const dupCheck = await callApi('checkDuplicate', { destinationIds: selectedDests, date, amount, description });
       if (dupCheck.duplicates && dupCheck.duplicates.length) {
