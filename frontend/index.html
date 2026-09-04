@@ -364,7 +364,7 @@ function renderDestinations() {
     const chip = document.createElement('button');
     chip.className = 'chip' + (d.selected ? ' selected' : '');
     chip.textContent = d.name;
-    chip.onclick = () => { d.selected = !d.selected; renderDestinations(); };
+    chip.onclick = async () => { d.selected = !d.selected; renderDestinations(); await loadDestinationOptions(); };
     wrap.appendChild(chip);
   });
   const addChip = document.createElement('button');
