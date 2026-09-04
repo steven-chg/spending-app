@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0f172a" />
+<title>Spending</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --text: #14171f;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #2f6fed;
+    --accent-weak: #eaf0ff;
+    --danger: #dc2626;
+    --danger-weak: #fdecec;
+    --success: #16a34a;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0d12;
+      --card: #14171f;
+      --text: #f1f2f4;
+      --muted: #9aa1ac;
+      --border: #262b36;
+      --accent: #5b8cf5;
+      --accent-weak: #172038;
+      --danger: #f87171;
+      --danger-weak: #2a1616;
+      --success: #4ade80;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: calc(env(safe-area-inset-top) + 14px) 18px 12px;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  header h1 { font-size: 17px; font-weight: 700; margin: 0; }
+  .typeswitch {
+    display: flex;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .typeswitch button {
+    border: none;
+    background: transparent;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .typeswitch button.active { background: var(--accent); color: #fff; }
+
+  main { padding: 6px 18px 120px; max-width: 480px; margin: 0 auto; }
+
+  .amount-wrap { text-align: center; padding: 18px 0 10px; }
+  .amount-wrap .sign { font-size: 22px; color: var(--muted); vertical-align: 8px; }
+  #amount {
+    border: none;
+    background: transparent;
+    font-size: 48px;
+    font-weight: 700;
+    width: 60%;
+    text-align: center;
+    color: var(--text);
+    outline: none;
+  }
+  #amount::placeholder { color: var(--border); }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 14px;
+    overflow: hidden;
+  }
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 15px;
+    border-bottom: 1px solid var(--border);
+  }
+  .field:last-child { border-bottom: none; }
+  .field label { width: 84px; flex-shrink: 0; font-size: 13px; color: var(--muted); font-weight: 600; }
+  .field input[type=text], .field input[type=date], .field select {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-size: 15px;
+    color: var(--text);
+    outline: none;
+    min-width: 0;
+  }
+  .field select { appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M0 0l5 6 5-6z' fill='%239aa1ac'/></svg>"); background-repeat: no-repeat; background-position: right 2px center; padding-right: 16px; }
+
+  .section-title { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 700; margin: 18px 4px 8px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 15px; }
+  .chip {
+    border: 1px solid var(--border);
+    background: var(--card);
+    color: var(--text);
+    padding: 7px 13px;
+    border-radius: 999px;
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .chip.selected { background: var(--accent-weak); border-color: var(--accent); color: var(--accent); }
+  .chip.add { color: var(--accent); border-style: dashed; }
+
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 13px 15px; }
+  .toggle-row .label { font-size: 15px; font-weight: 600; }
+  .toggle-row .sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .switch { position: relative; width: 44px; height: 26px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .track { position: absolute; inset: 0; background: var(--border); border-radius: 999px; transition: .15s; }
+  .switch .track:before { content: ""; position: absolute; height: 20px; width: 20px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .switch input:checked + .track { background: var(--accent); }
+  .switch input:checked + .track:before { transform: translateX(18px); }
+
+  .extra { padding: 0 15px 14px; }
+  .extra input[type=text], .extra select { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 14.5px; }
+
+  .banner { border-radius: var(--radius); padding: 13px 15px; margin-bottom: 14px; font-size: 13.5px; line-height: 1.45; }
+  .banner.warn { background: var(--danger-weak); color: var(--danger); border: 1px solid var(--danger); }
+  .banner.info { background: var(--accent-weak); color: var(--accent); border: 1px solid var(--accent); }
+  .banner strong { display: block; margin-bottom: 3px; font-size: 13.5px; }
+  .banner .row-actions { margin-top: 8px; display: flex; gap: 8px; }
+  .banner button { border: none; padding: 7px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 700; }
+  .banner .ghost { background: transparent; color: inherit; border: 1px solid currentColor; }
+  .banner .solid { background: var(--danger); color: #fff; }
+
+  footer {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    padding: 12px 18px calc(env(safe-area-inset-bottom) + 12px);
+    background: linear-gradient(to top, var(--bg) 60%, transparent);
+  }
+  #save {
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+    display: block;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 16px;
+    border-radius: 14px;
+    font-size: 16px;
+    font-weight: 700;
+    box-shadow: 0 6px 16px rgba(47,111,237,.35);
+  }
+  #save:disabled { opacity: .5; }
+
+  .toast {
+    position: fixed;
+    left: 50%; bottom: 100px;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--text);
+    color: var(--bg);
+    padding: 12px 18px;
+    border-radius: 999px;
+    font-size: 13.5px;
+    font-weight: 600;
+    opacity: 0;
+    transition: .2s;
+    pointer-events: none;
+    z-index: 20;
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; align-items: flex-end; z-index: 30; }
+  .modal-backdrop.show { display: flex; }
+  .modal {
+    background: var(--card);
+    width: 100%;
+    border-radius: 18px 18px 0 0;
+    padding: 20px 20px calc(env(safe-area-inset-bottom) + 20px);
+  }
+  .modal h3 { margin: 0 0 12px; font-size: 16px; }
+  .modal input { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 15px; margin-bottom: 10px; }
+  .modal .toggle-row { padding: 8px 0; }
+  .modal .actions { display: flex; gap: 10px; margin-top: 10px; }
+  .modal .actions button { flex: 1; padding: 12px; border-radius: 10px; border: none; font-weight: 700; font-size: 14px; }
+  .modal .cancel { background: var(--bg); color: var(--text); border: 1px solid var(--border) !important; }
+  .modal .confirm { background: var(--accent); color: #fff; }
+
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Log spending</h1>
+  <div class="typeswitch">
+    <button id="typeExpense" class="active">Expense</button>
+    <button id="typeIncome">Income</button>
+  </div>
+</header>
+
+<main>
+  <div id="banners"></div>
+
+  <div class="amount-wrap">
+    <span class="sign">$</span><input id="amount" inputmode="decimal" placeholder="0.00" />
+  </div>
+
+  <div class="card">
+    <div class="field">
+      <label>What</label>
+      <input id="description" type="text" placeholder="Dinner, groceries, gas…" />
+    </div>
+    <div class="field">
+      <label>Date</label>
+      <input id="date" type="date" />
+    </div>
+    <div class="field">
+      <label>Category</label>
+      <select id="category"></select>
+    </div>
+    <div class="field">
+      <label>Account</label>
+      <select id="account"></select>
+    </div>
+  </div>
+
+  <div class="section-title">Goes to</div>
+  <div class="card">
+    <div id="destinations" class="chips"></div>
+  </div>
+
+  <div class="section-title" id="sharedTitle">Shared expense</div>
+  <div class="card">
+    <div class="toggle-row" id="sharedRow">
+      <div>
+        <div class="label" id="sharedLabel">I paid this for others</div>
+        <div class="sub" id="sharedSub">Track who owes you back</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="sharedToggle" />
+        <span class="track"></span>
+      </label>
+    </div>
+    <div class="extra" id="sharedExtra" style="display:none;"></div>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<footer>
+  <button id="save">Save entry</button>
+</footer>
+
+<div class="modal-backdrop" id="newDestModal">
+  <div class="modal">
+    <h3>New spreadsheet</h3>
+    <input id="newDestName" type="text" placeholder="e.g. December Ski Trip" />
+    <div class="actions">
+      <button class="cancel" data-close>Cancel</button>
+      <button class="confirm" id="newDestConfirm">Create</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="newCatModal">
+  <div class="modal">
+    <h3>New category</h3>
+    <input id="newCatName" type="text" placeholder="e.g. Ski Trip" />
+    <div class="toggle-row" style="padding:4px 0 10px;">
+      <div class="label" style="font-size:13.5px;">Also add to template</div>
+      <label class="switch">
+        <input type="checkbox" id="newCatTemplate" />
+        <span class="track"></span>
+      </label>
+    </div>
+    <div class="actions">
+      <button class="cancel" data-close>Cancel</button>
+      <button class="confirm" id="newCatConfirm">Add</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ====== CONFIGURE THIS ======
+const APP_SCRIPT_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+// =============================
+
+const state = {
+  isExpense: true,
+  destinations: [], // [{id, name, selected}]
+  categories: [],
+  accounts: [],
+  sharedMode: null, // null | 'open' | 'payback'
+  openLedger: [],
+  duplicateOverride: false,
+};
+
+const $ = (id) => document.getElementById(id);
+
+function todayStr() {
+  const d = new Date();
+  const tz = d.getTimezoneOffset() * 60000;
+  return new Date(d - tz).toISOString().slice(0, 10);
+}
+
+async function callApi(action, params) {
+  const body = Object.assign({ action }, params || {});
+  const res = await fetch(APP_SCRIPT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'Request failed');
+  return json.data;
+}
+
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function renderDestinations() {
+  const wrap = $('destinations');
+  wrap.innerHTML = '';
+  state.destinations.forEach((d) => {
+    const chip = document.createElement('button');
+    chip.className = 'chip' + (d.selected ? ' selected' : '');
+    chip.textContent = d.name;
+    chip.onclick = () => { d.selected = !d.selected; renderDestinations(); };
+    wrap.appendChild(chip);
+  });
+  const addChip = document.createElement('button');
+  addChip.className = 'chip add';
+  addChip.textContent = '+ New spreadsheet';
+  addChip.onclick = () => openModal('newDestModal');
+  wrap.appendChild(addChip);
+}
+
+function renderSelect(id, values, placeholder) {
+  const sel = $(id);
+  sel.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.textContent = placeholder;
+  ph.value = '';
+  sel.appendChild(ph);
+  values.forEach((v) => {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = v;
+    sel.appendChild(o);
+  });
+  const addOpt = document.createElement('option');
+  addOpt.value = '__add__';
+  addOpt.textContent = '+ Add new…';
+  sel.appendChild(addOpt);
+}
+
+async function loadDestinationOptions() {
+  const primary = state.destinations.find((d) => d.selected) || state.destinations[0];
+  if (!primary) return;
+  const opts = await callApi('getSheetOptions', { destinationId: primary.id });
+  state.categories = opts.categories || [];
+  state.accounts = opts.accounts || [];
+  renderSelect('category', state.categories, 'Select category');
+  renderSelect('account', state.accounts, 'Select account');
+}
+
+async function refreshDestinations() {
+  const date = $('date').value || todayStr();
+  const res = await callApi('suggestDestinations', { date });
+  const list = [];
+  if (res.autoSuggested && !res.autoSuggested.missing) {
+    list.push({ id: res.autoSuggested.id, name: res.autoSuggested.name, selected: true });
+  }
+  (res.recent || []).forEach((f) => {
+    if (!list.find((d) => d.id === f.id)) list.push({ id: f.id, name: f.name, selected: false });
+  });
+  state.destinations = list;
+  renderDestinations();
+  await loadDestinationOptions();
+}
+
+function setType(isExpense) {
+  state.isExpense = isExpense;
+  $('typeExpense').classList.toggle('active', isExpense);
+  $('typeIncome').classList.toggle('active', !isExpense);
+  $('sharedLabel').textContent = isExpense ? 'I paid this for others' : 'This is a payback';
+  $('sharedSub').textContent = isExpense ? 'Track who owes you back' : 'Link it to something you paid for earlier';
+  $('sharedToggle').checked = false;
+  state.sharedMode = null;
+  renderSharedExtra();
+}
+
+function renderSharedExtra() {
+  const box = $('sharedExtra');
+  const on = $('sharedToggle').checked;
+  box.style.display = on ? 'block' : 'none';
+  box.innerHTML = '';
+  if (!on) { state.sharedMode = null; return; }
+  if (state.isExpense) {
+    state.sharedMode = 'open';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'sharedWho';
+    input.placeholder = 'Who\'s in on this? (optional)';
+    box.appendChild(input);
+  } else {
+    state.sharedMode = 'payback';
+    const select = document.createElement('select');
+    select.id = 'ledgerSelect';
+    const ph = document.createElement('option');
+    ph.textContent = state.openLedger.length ? 'Which expense is this paying back?' : 'Loading…';
+    ph.value = '';
+    select.appendChild(ph);
+    state.openLedger.forEach((entry) => {
+      const o = document.createElement('option');
+      o.value = entry.id;
+      const remaining = Number(entry.amountPaid) - Number(entry.reimbursedSoFar);
+      o.textContent = entry.id + ' — ' + entry.description + ' (paid $' + entry.amountPaid + (remaining > 0 ? ', ~$' + remaining.toFixed(2) + ' still open' : '') + ')';
+      select.appendChild(o);
+    });
+    box.appendChild(select);
+    loadOpenLedger();
+  }
+}
+
+async function loadOpenLedger() {
+  const res = await callApi('getOpenLedgerEntries', {});
+  state.openLedger = res.entries || [];
+  if ($('sharedToggle').checked && !state.isExpense) renderSharedExtra();
+}
+
+function openModal(id) { $(id).classList.add('show'); }
+function closeModal(id) { $(id).classList.remove('show'); }
+
+document.querySelectorAll('[data-close]').forEach((b) => b.onclick = (e) => {
+  closeModal(e.target.closest('.modal-backdrop').id);
+});
+
+$('newDestConfirm').onclick = async () => {
+  const name = $('newDestName').value.trim();
+  if (!name) return;
+  $('newDestConfirm').disabled = true;
+  try {
+    const res = await callApi('createDestination', { name });
+    state.destinations.forEach((d) => d.selected = false);
+    state.destinations.unshift({ id: res.id, name: res.name, selected: true });
+    renderDestinations();
+    await loadDestinationOptions();
+    closeModal('newDestModal');
+    $('newDestName').value = '';
+    toast('Created "' + name + '"');
+  } catch (e) { toast('Error: ' + e.message); }
+  $('newDestConfirm').disabled = false;
+};
+
+$('newCatConfirm').onclick = async () => {
+  const name = $('newCatName').value.trim();
+  if (!name) return;
+  const primary = state.destinations.find((d) => d.selected);
+  if (!primary) { toast('Pick a destination first'); return; }
+  $('newCatConfirm').disabled = true;
+  try {
+    await callApi('addCategory', { destinationId: primary.id, categoryName: name, alsoTemplate: $('newCatTemplate').checked });
+    state.categories.push(name);
+    renderSelect('category', state.categories, 'Select category');
+    $('category').value = name;
+    closeModal('newCatModal');
+    $('newCatName').value = '';
+    toast('Added category "' + name + '"');
+  } catch (e) { toast('Error: ' + e.message); }
+  $('newCatConfirm').disabled = false;
+};
+
+$('category').addEventListener('change', (e) => {
+  if (e.target.value === '__add__') { e.target.value = ''; openModal('newCatModal'); }
+});
+
+$('typeExpense').onclick = () => setType(true);
+$('typeIncome').onclick = () => setType(false);
+$('sharedToggle').addEventListener('change', renderSharedExtra);
+$('date').addEventListener('change', refreshDestinations);
+
+function showBanner(html, kind) {
+  $('banners').innerHTML = '<div class="banner ' + kind + '">' + html + '</div>';
+}
+function clearBanners() { $('banners').innerHTML = ''; }
+
+$('save').addEventListener('click', async () => {
+  clearBanners();
+  const amount = parseFloat($('amount').value);
+  const description = $('description').value.trim();
+  const date = $('date').value || todayStr();
+  const category = $('category').value;
+  const account = $('account').value;
+  const selectedDests = state.destinations.filter((d) => d.selected).map((d) => d.id);
+
+  if (!amount || amount <= 0) { toast('Enter an amount'); return; }
+  if (!description) { toast('Add a description'); return; }
+  if (!selectedDests.length) { toast('Pick at least one destination'); return; }
+
+  $('save').disabled = true;
+  $('save').innerHTML = '<span class="spinner"></span>Saving…';
+
+  try {
+    if (!state.duplicateOverride) {
+      const dupCheck = await callApi('checkDuplicate', { destinationIds: selectedDests, date, amount, description });
+      if (dupCheck.duplicates && dupCheck.duplicates.length) {
+        showBanner(
+          '<strong>Looks like this might already be logged</strong>' +
+          dupCheck.duplicates.map((d) => 'Found: $' + d.amount + ' — ' + d.description).join('<br>') +
+          '<div class="row-actions"><button class="solid" id="saveAnyway">Save anyway</button><button class="ghost" id="cancelDup">Cancel</button></div>',
+          'warn'
+        );
+        $('saveAnyway').onclick = () => { state.duplicateOverride = true; $('save').click(); };
+        $('cancelDup').onclick = clearBanners;
+        $('save').disabled = false;
+        $('save').textContent = 'Save entry';
+        return;
+      }
+    }
+
+    let sharedTag = null;
+    if (state.sharedMode === 'open') {
+      sharedTag = { mode: 'open', who: (document.getElementById('sharedWho') || {}).value || '' };
+    } else if (state.sharedMode === 'payback') {
+      const ledgerId = (document.getElementById('ledgerSelect') || {}).value;
+      if (!ledgerId) { toast('Pick which expense this pays back'); $('save').disabled = false; $('save').textContent = 'Save entry'; return; }
+      sharedTag = { mode: 'payback', ledgerId, who: '' };
+    }
+
+    await callApi('addEntry', {
+      date, amount, description, category, account,
+      isExpense: state.isExpense,
+      destinationIds: selectedDests,
+      sharedTag,
+    });
+
+    toast('Saved ✓');
+    $('amount').value = '';
+    $('description').value = '';
+    $('sharedToggle').checked = false;
+    renderSharedExtra();
+    state.duplicateOverride = false;
+  } catch (e) {
+    showBanner('<strong>Couldn\'t save</strong>' + e.message, 'warn');
+  }
+  $('save').disabled = false;
+  $('save').textContent = 'Save entry';
+});
+
+async function init() {
+  $('date').value = todayStr();
+  setType(true);
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  try {
+    await refreshDestinations();
+  } catch (e) {
+    showBanner('<strong>Could not reach your spreadsheet</strong>Check APP_SCRIPT_URL is set correctly in index.html, and that the Apps Script is deployed. (' + e.message + ')', 'info');
+  }
+}
+init();
+</script>
+</body>
+</html>
