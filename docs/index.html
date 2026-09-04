@@ -69,11 +69,12 @@
   .typeswitch button {
     border: none;
     background: transparent;
-    padding: 6px 14px;
+    padding: 6px 10px;
     border-radius: 999px;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 600;
     color: var(--muted);
+    white-space: nowrap;
   }
   .typeswitch button.active { background: var(--accent); color: #fff; }
 
@@ -224,6 +225,7 @@
   <h1>Log spending</h1>
   <div class="typeswitch">
     <button id="typeExpense" class="active">Expense</button>
+    <button id="typePayback">Pay Back</button>
     <button id="typeIncome">Income</button>
   </div>
 </header>
@@ -244,13 +246,28 @@
       <label>Date</label>
       <input id="date" type="date" />
     </div>
-    <div class="field">
+    <div class="field" id="categoryField">
       <label>Category</label>
       <select id="category"></select>
     </div>
-    <div class="field">
+    <div class="field" id="accountField">
       <label>Account</label>
       <select id="account"></select>
+    </div>
+  </div>
+
+  <div class="section-title" id="paybackTitle" style="display:none;">Which expense is this paying back?</div>
+  <div class="card" id="paybackCard" style="display:none;">
+    <div class="field">
+      <label>Expense</label>
+      <select id="ledgerSelect"></select>
+    </div>
+    <div class="field" id="paybackCategoryField" style="display:none;">
+      <label>Category</label>
+      <div id="paybackCategoryDisplay" style="flex:1;font-size:15px;">—</div>
+    </div>
+    <div class="toggle-row" style="justify-content:flex-start;">
+      <button type="button" id="markPaidBtn" style="background:none;border:none;color:var(--accent);font-size:13px;font-weight:600;padding:0;cursor:pointer;">Mark as fully paid back (no payment logged)</button>
     </div>
   </div>
 
@@ -260,7 +277,7 @@
   </div>
 
   <div class="section-title" id="sharedTitle">Shared expense</div>
-  <div class="card">
+  <div class="card" id="sharedCard">
     <div class="toggle-row" id="sharedRow">
       <div>
         <div class="label" id="sharedLabel">I paid this for others</div>
@@ -339,11 +356,12 @@ const APP_SCRIPT_URL = (window.APP_CONFIG && window.APP_CONFIG.url) || '';
 const APP_SECRET = (window.APP_CONFIG && window.APP_CONFIG.secret) || '';
 
 const state = {
-  isExpense: true,
+  entryType: 'expense', // 'expense' | 'payback' | 'income'
   destinations: [], // [{id, name, selected}]
-  categories: [],
+  categories: [], // expense categories
+  incomeCategories: [],
   accounts: [],
-  sharedMode: null, // null | 'open' | 'payback'
+  sharedMode: null, // null | 'open' (payback is its own top-level entryType now)
   openLedger: [],
   duplicateOverride: false,
   // A category/account picked via "+ Add new..." isn't written to the
@@ -351,7 +369,7 @@ const state = {
   // "Add", which was slow and landed in the wrong place). It's only staged
   // here and gets created for real at Save time, in the same destination
   // the entry is going to.
-  pendingCategory: null, // null | {name, alsoTemplate}
+  pendingCategory: null, // null | {name, alsoTemplate, isExpense}
   pendingAccount: null, // null | {name, alsoTemplate}
 };
 
@@ -422,8 +440,9 @@ async function loadDestinationOptions() {
   if (!primary) return;
   const opts = await callApi('getSheetOptions', { destinationId: primary.id });
   state.categories = opts.categories || [];
+  state.incomeCategories = opts.incomeCategories || [];
   state.accounts = opts.accounts || [];
-  renderSelect('category', state.categories, 'Select category');
+  renderSelect('category', state.entryType === 'income' ? state.incomeCategories : state.categories, 'Select category');
   renderSelect('account', state.accounts, 'Select account');
 }
 
@@ -442,15 +461,38 @@ async function refreshDestinations() {
   await loadDestinationOptions();
 }
 
-function setType(isExpense) {
-  state.isExpense = isExpense;
-  $('typeExpense').classList.toggle('active', isExpense);
-  $('typeIncome').classList.toggle('active', !isExpense);
-  $('sharedLabel').textContent = isExpense ? 'I paid this for others' : 'This is a payback';
-  $('sharedSub').textContent = isExpense ? 'Track who owes you back' : 'Link it to something you paid for earlier';
+// Three top-level entry types now, instead of an Expense/Income toggle plus
+// a payback mode buried inside a "shared expense" sub-toggle:
+//   expense  — Category (expense list) + Account, optional "I paid this for
+//              others" to open a new shared-expense ledger entry.
+//   payback  — pick which open ledger entry this pays down; the category is
+//              taken from THAT entry (so it always nets against the right
+//              expense category) rather than picked separately.
+//   income   — Category only, from the separate Income category list; no
+//              Account (income isn't tied to one).
+function setEntryType(type) {
+  state.entryType = type;
+  $('typeExpense').classList.toggle('active', type === 'expense');
+  $('typePayback').classList.toggle('active', type === 'payback');
+  $('typeIncome').classList.toggle('active', type === 'income');
+
+  $('categoryField').style.display = type === 'payback' ? 'none' : 'flex';
+  $('accountField').style.display = type === 'income' ? 'none' : 'flex';
+  $('sharedCard').style.display = type === 'expense' ? '' : 'none';
+  $('sharedTitle').style.display = type === 'expense' ? '' : 'none';
+  $('paybackCard').style.display = type === 'payback' ? '' : 'none';
+  $('paybackTitle').style.display = type === 'payback' ? '' : 'none';
+
   $('sharedToggle').checked = false;
   state.sharedMode = null;
   renderSharedExtra();
+
+  renderSelect('category', type === 'income' ? state.incomeCategories : state.categories, 'Select category');
+
+  if (type === 'payback') {
+    populateLedgerSelect();
+    loadOpenLedger();
+  }
 }
 
 function renderSharedExtra() {
@@ -459,33 +501,24 @@ function renderSharedExtra() {
   box.style.display = on ? 'block' : 'none';
   box.innerHTML = '';
   if (!on) { state.sharedMode = null; return; }
-  if (state.isExpense) {
-    state.sharedMode = 'open';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.id = 'sharedWho';
-    input.placeholder = 'Who\'s in on this? (optional)';
-    box.appendChild(input);
-  } else {
-    state.sharedMode = 'payback';
-    const select = document.createElement('select');
-    select.id = 'ledgerSelect';
-    box.appendChild(select);
-    populateLedgerSelect();
-    loadOpenLedger();
-  }
+  state.sharedMode = 'open';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.id = 'sharedWho';
+  input.placeholder = 'Who\'s in on this? (optional)';
+  box.appendChild(input);
 }
 
 // Fills (or refreshes) the ledger dropdown's <option>s in place, without
 // recreating the <select> element — so a selection the user already made
 // survives a background refresh instead of getting reset to the placeholder.
 function populateLedgerSelect() {
-  const select = document.getElementById('ledgerSelect');
+  const select = $('ledgerSelect');
   if (!select) return;
   const previousValue = select.value;
   select.innerHTML = '';
   const ph = document.createElement('option');
-  ph.textContent = state.openLedger.length ? 'Which expense is this paying back?' : 'Loading…';
+  ph.textContent = state.openLedger.length ? 'Which expense is this paying back?' : 'Nothing open right now';
   ph.value = '';
   select.appendChild(ph);
   state.openLedger.forEach((entry) => {
@@ -498,19 +531,46 @@ function populateLedgerSelect() {
   if (previousValue && state.openLedger.some((e) => e.id === previousValue)) {
     select.value = previousValue;
   }
+  updatePaybackCategoryDisplay();
 }
 
 async function loadOpenLedger() {
   const res = await callApi('getOpenLedgerEntries', {});
   state.openLedger = res.entries || [];
-  // Refresh the dropdown's options in place. Calling renderSharedExtra()
-  // here (as this used to) would recreate the <select> AND call
-  // loadOpenLedger() again inside it — an infinite loop that hammered the
-  // backend and kept resetting the dropdown to the placeholder text right
-  // after you picked something, which is exactly the "glitches back to the
-  // question" bug.
-  if ($('sharedToggle').checked && !state.isExpense) populateLedgerSelect();
+  // Refresh the dropdown's options in place — the ledger <select> is a
+  // static element now (not recreated per render), so there's no risk of
+  // the recursive rebuild-on-refresh loop this used to have.
+  if (state.entryType === 'payback') populateLedgerSelect();
 }
+
+// Shows which category the selected ledger entry will net against, so it's
+// clear where the payback amount is actually going before you save it.
+function updatePaybackCategoryDisplay() {
+  const select = $('ledgerSelect');
+  const entry = select && state.openLedger.find((e) => e.id === select.value);
+  const field = $('paybackCategoryField');
+  if (entry && entry.category) {
+    field.style.display = 'flex';
+    $('paybackCategoryDisplay').textContent = entry.category;
+  } else {
+    field.style.display = 'none';
+  }
+}
+$('ledgerSelect').addEventListener('change', updatePaybackCategoryDisplay);
+
+$('markPaidBtn').addEventListener('click', async () => {
+  const ledgerId = $('ledgerSelect').value;
+  if (!ledgerId) { toast('Pick which expense first'); return; }
+  $('markPaidBtn').disabled = true;
+  try {
+    await callApi('settleLedgerEntry', { ledgerId, settled: true });
+    toast('Marked as fully paid back ✓');
+    $('ledgerSelect').value = '';
+    updatePaybackCategoryDisplay();
+    await loadOpenLedger();
+  } catch (e) { toast('Error: ' + e.message); }
+  $('markPaidBtn').disabled = false;
+});
 
 function openModal(id) { $(id).classList.add('show'); }
 function closeModal(id) { $(id).classList.remove('show'); }
@@ -542,11 +602,15 @@ $('newCatConfirm').onclick = () => {
   if (!state.destinations.some((d) => d.selected)) { toast('Pick a destination first'); return; }
   // Stage it locally — it's only written to the spreadsheet when you save
   // the entry, so this is instant and never leaves a half-added category
-  // behind if you back out.
-  if (!state.categories.includes(name)) state.categories.push(name);
-  renderSelect('category', state.categories, 'Select category');
+  // behind if you back out. Which list it goes into (and which Summary-
+  // sheet block it's created in at save time) depends on whether this is
+  // an Expense or Income entry.
+  const isIncome = state.entryType === 'income';
+  const list = isIncome ? state.incomeCategories : state.categories;
+  if (!list.includes(name)) list.push(name);
+  renderSelect('category', list, 'Select category');
   $('category').value = name;
-  state.pendingCategory = { name, alsoTemplate: $('newCatTemplate').checked };
+  state.pendingCategory = { name, alsoTemplate: $('newCatTemplate').checked, isExpense: !isIncome };
   closeModal('newCatModal');
   $('newCatName').value = '';
   $('newCatTemplate').checked = false;
@@ -572,8 +636,9 @@ $('account').addEventListener('change', (e) => {
   if (e.target.value === '__add__') { e.target.value = ''; openModal('newAccModal'); }
 });
 
-$('typeExpense').onclick = () => setType(true);
-$('typeIncome').onclick = () => setType(false);
+$('typeExpense').onclick = () => setEntryType('expense');
+$('typePayback').onclick = () => setEntryType('payback');
+$('typeIncome').onclick = () => setEntryType('income');
 $('sharedToggle').addEventListener('change', renderSharedExtra);
 $('date').addEventListener('change', refreshDestinations);
 
@@ -584,15 +649,35 @@ function clearBanners() { $('banners').innerHTML = ''; }
 
 $('save').addEventListener('click', async () => {
   clearBanners();
+  const type = state.entryType;
   const amount = parseFloat($('amount').value);
   const description = $('description').value.trim();
   const date = $('date').value || todayStr();
-  const category = $('category').value;
-  const account = $('account').value;
+  const account = type === 'income' ? '' : $('account').value;
   const selectedDests = state.destinations.filter((d) => d.selected).map((d) => d.id);
+
+  // Pay Back writes to the Expense block too (as a negative amount, so it
+  // nets against the category it's paying down) — Income is the only type
+  // that's actually isExpense: false.
+  const isExpense = type !== 'income';
+
+  let category = $('category').value;
+  let sharedTag = null;
+  let ledgerEntry = null;
+  if (type === 'payback') {
+    const ledgerId = ($('ledgerSelect') || {}).value;
+    if (!ledgerId) { toast('Pick which expense this pays back'); return; }
+    ledgerEntry = state.openLedger.find((e) => e.id === ledgerId);
+    category = (ledgerEntry && ledgerEntry.category) || '';
+    sharedTag = { mode: 'payback', ledgerId, who: '' };
+  } else if (type === 'expense' && state.sharedMode === 'open') {
+    sharedTag = { mode: 'open', who: (document.getElementById('sharedWho') || {}).value || '' };
+  }
 
   if (!amount || amount <= 0) { toast('Enter an amount'); return; }
   if (!description) { toast('Add a description'); return; }
+  if (type !== 'income' && !account) { toast('Pick an account'); return; }
+  if (type !== 'payback' && !category) { toast('Pick a category'); return; }
   if (!selectedDests.length) { toast('Pick at least one destination'); return; }
 
   $('save').disabled = true;
@@ -606,7 +691,7 @@ $('save').addEventListener('click', async () => {
     const primary = state.destinations.find((d) => d.selected);
     const setupCalls = [];
     if (state.pendingCategory && category === state.pendingCategory.name && primary) {
-      setupCalls.push(callApi('addCategory', { destinationId: primary.id, categoryName: state.pendingCategory.name, alsoTemplate: state.pendingCategory.alsoTemplate }).then(() => { state.pendingCategory = null; }));
+      setupCalls.push(callApi('addCategory', { destinationId: primary.id, categoryName: state.pendingCategory.name, alsoTemplate: state.pendingCategory.alsoTemplate, isExpense: state.pendingCategory.isExpense }).then(() => { state.pendingCategory = null; }));
     }
     if (state.pendingAccount && account === state.pendingAccount.name && primary) {
       setupCalls.push(callApi('addAccount', { destinationId: primary.id, accountName: state.pendingAccount.name, alsoTemplate: state.pendingAccount.alsoTemplate }).then(() => { state.pendingAccount = null; }));
@@ -634,18 +719,9 @@ $('save').addEventListener('click', async () => {
       }
     }
 
-    let sharedTag = null;
-    if (state.sharedMode === 'open') {
-      sharedTag = { mode: 'open', who: (document.getElementById('sharedWho') || {}).value || '' };
-    } else if (state.sharedMode === 'payback') {
-      const ledgerId = (document.getElementById('ledgerSelect') || {}).value;
-      if (!ledgerId) { toast('Pick which expense this pays back'); $('save').disabled = false; $('save').textContent = 'Save entry'; return; }
-      sharedTag = { mode: 'payback', ledgerId, who: '' };
-    }
-
     await callApi('addEntry', {
       date, amount, description, category, account,
-      isExpense: state.isExpense,
+      isExpense,
       destinationIds: selectedDests,
       sharedTag,
     });
@@ -655,6 +731,11 @@ $('save').addEventListener('click', async () => {
     $('description').value = '';
     $('sharedToggle').checked = false;
     renderSharedExtra();
+    if (type === 'payback') {
+      $('ledgerSelect').value = '';
+      updatePaybackCategoryDisplay();
+      await loadOpenLedger();
+    }
     state.duplicateOverride = false;
   } catch (e) {
     showBanner('<strong>Couldn\'t save</strong>' + e.message, 'warn');
@@ -665,7 +746,7 @@ $('save').addEventListener('click', async () => {
 
 async function init() {
   $('date').value = todayStr();
-  setType(true);
+  setEntryType('expense');
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
