@@ -310,10 +310,15 @@
   </div>
 </div>
 
+<script src="config.js"></script>
 <script>
-// ====== CONFIGURE THIS ======
-const APP_SCRIPT_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
-// =============================
+// APP_SCRIPT_URL and APP_SECRET live in config.js. Since GitHub Pages can only
+// serve files that are actually committed, config.js IS committed and is
+// therefore publicly readable, same as this file — the secret is a deterrent
+// against random/automated hits on the URL, not real protection against
+// anyone who deliberately reads this public repo. See the note in Code.gs.
+const APP_SCRIPT_URL = (window.APP_CONFIG && window.APP_CONFIG.url) || '';
+const APP_SECRET = (window.APP_CONFIG && window.APP_CONFIG.secret) || '';
 
 const state = {
   isExpense: true,
@@ -334,7 +339,7 @@ function todayStr() {
 }
 
 async function callApi(action, params) {
-  const body = Object.assign({ action }, params || {});
+  const body = Object.assign({ action, secret: APP_SECRET }, params || {});
   const res = await fetch(APP_SCRIPT_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
