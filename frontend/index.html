@@ -584,14 +584,18 @@ $('save').addEventListener('click', async () => {
     // selected (if you added one and then picked something else instead,
     // just drop it rather than creating something you're not using).
     const primary = state.destinations.find((d) => d.selected);
+    const setupCalls = [];
     if (state.pendingCategory && category === state.pendingCategory.name && primary) {
-      await callApi('addCategory', { destinationId: primary.id, categoryName: state.pendingCategory.name, alsoTemplate: state.pendingCategory.alsoTemplate });
-      state.pendingCategory = null;
+      setupCalls.push(callApi('addCategory', { destinationId: primary.id, categoryName: state.pendingCategory.name, alsoTemplate: state.pendingCategory.alsoTemplate }).then(() => { state.pendingCategory = null; }));
     }
     if (state.pendingAccount && account === state.pendingAccount.name && primary) {
-      await callApi('addAccount', { destinationId: primary.id, accountName: state.pendingAccount.name, alsoTemplate: state.pendingAccount.alsoTemplate });
-      state.pendingAccount = null;
+      setupCalls.push(callApi('addAccount', { destinationId: primary.id, accountName: state.pendingAccount.name, alsoTemplate: state.pendingAccount.alsoTemplate }).then(() => { state.pendingAccount = null; }));
     }
+    // Run these in parallel rather than one after another — each is its own
+    // Apps Script round trip, and chaining them back-to-back with the
+    // duplicate check and the actual save meant a brand-new category AND
+    // account together could take long enough to trip a "Failed to fetch".
+    if (setupCalls.length) await Promise.all(setupCalls);
 
     if (!state.duplicateOverride) {
       const dupCheck = await callApi('checkDuplicate', { destinationIds: selectedDests, date, amount, description });
